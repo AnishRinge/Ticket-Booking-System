@@ -1,0 +1,13 @@
+sqlalchemy
+alembic
+psycopg2-binary
+pydantic-settings
+python-dotenv
+pytest
+fastapi
+uvicorn
+anyio
+httpx
+argon2-cffi
+pyjwt
+email-validator
