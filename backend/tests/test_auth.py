@@ -1,42 +1,8 @@
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.main import app
-from app.db.deps import get_db
-from app.models import Base  # This imports all models via __init__.py
 from app.models.user import UserRole
 from app.core.security import create_access_token
 
-from sqlalchemy.pool import StaticPool
-
-# Setup In-memory SQLite with StaticPool for consistent single-connection-like behavior
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-
-client = TestClient(app)
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
-
-def test_register_user():
+def test_register_user(client):
     response = client.post(
         "/api/v1/auth/register",
         json={
@@ -52,7 +18,7 @@ def test_register_user():
     assert "id" in data
     assert "password" not in data
 
-def test_register_duplicate_email():
+def test_register_duplicate_email(client):
     payload = {
         "email": "test@example.com",
         "password": "password123",
@@ -63,7 +29,7 @@ def test_register_duplicate_email():
     assert response.status_code == 400
     assert "already exists" in response.json()["message"]
 
-def test_register_admin_fails():
+def test_register_admin_fails(client):
     response = client.post(
         "/api/v1/auth/register",
         json={
@@ -75,7 +41,7 @@ def test_register_admin_fails():
     )
     assert response.status_code == 403
 
-def test_login_success():
+def test_login_success(client):
     # Register first
     client.post(
         "/api/v1/auth/register",
@@ -95,7 +61,7 @@ def test_login_success():
     assert "access_token" in data
     assert data["token_type"] == "bearer"
 
-def test_login_wrong_password():
+def test_login_wrong_password(client):
     client.post(
         "/api/v1/auth/register",
         json={"email": "test@example.com", "password": "password123", "full_name": "Test"}
@@ -106,17 +72,15 @@ def test_login_wrong_password():
     )
     assert response.status_code == 401
 
-def get_token_for_user(email: str, role: UserRole):
-    db = TestingSessionLocal()
+def get_token_for_user(db, email: str, role: UserRole):
     from app.services.auth import auth_service
     from app.schemas.auth import UserCreate
     user = auth_service.register_user(db, UserCreate(email=email, password="password123", full_name="Test", role=role))
     token = create_access_token(subject=user.id)
-    db.close()
     return token
 
-def test_rbac_customer():
-    token = get_token_for_user("customer@example.com", UserRole.CUSTOMER)
+def test_rbac_customer(client, db_session):
+    token = get_token_for_user(db_session, "customer@example.com", UserRole.CUSTOMER)
     headers = {"Authorization": f"Bearer {token}"}
     
     # Can access customer-only
@@ -126,8 +90,8 @@ def test_rbac_customer():
     # Cannot access admin-only
     assert client.get("/api/v1/test/admin-only", headers=headers).status_code == 403
 
-def test_rbac_organiser():
-    token = get_token_for_user("org@example.com", UserRole.ORGANISER)
+def test_rbac_organiser(client, db_session):
+    token = get_token_for_user(db_session, "org@example.com", UserRole.ORGANISER)
     headers = {"Authorization": f"Bearer {token}"}
     
     # Can access organiser-only
@@ -137,16 +101,15 @@ def test_rbac_organiser():
     # Cannot access customer-only (logic: unless specified otherwise)
     assert client.get("/api/v1/test/customer-only", headers=headers).status_code == 403
 
-def test_rbac_admin():
+def test_rbac_admin(client, db_session):
     # We need to manually create an admin in the test DB because registration blocks it
-    db = TestingSessionLocal()
+    db = db_session
     from app.core.security import get_password_hash
     from app.models.user import User
     admin = User(email="admin@example.com", hashed_password=get_password_hash("password123"), full_name="Admin", role=UserRole.ADMIN)
     db.add(admin)
     db.commit()
     token = create_access_token(subject=admin.id)
-    db.close()
     
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/v1/test/admin-only", headers=headers).status_code == 200

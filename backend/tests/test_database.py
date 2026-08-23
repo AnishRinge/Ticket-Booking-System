@@ -1,25 +1,8 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from app.models import Base  # imports all models
 
-# Use SQLite for testing model definitions and relationships in the absence of PostgreSQL
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture
-def db():
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
-
-def test_user_creation(db):
+def test_user_creation(db_session):
+    db = db_session
     from app.models import User, UserRole
     user = User(
         email="test@example.com",
@@ -33,7 +16,8 @@ def test_user_creation(db):
     assert user.id is not None
     assert user.email == "test@example.com"
 
-def test_venue_and_seats(db):
+def test_venue_and_seats(db_session):
+    db = db_session
     from app.models import Venue, SeatCategory, Seat
     venue = Venue(name="Test Venue", address="123 Test St")
     db.add(venue)
@@ -55,7 +39,8 @@ def test_venue_and_seats(db):
     assert len(venue.seats) == 1
     assert venue.seats[0].row_identifier == "A"
 
-def test_show_seat_unique_constraint(db):
+def test_show_seat_unique_constraint(db_session):
+    db = db_session
     from sqlalchemy.exc import IntegrityError
     from app.models import User, UserRole, Venue, SeatCategory, Seat, Event, ShowSeat
     
