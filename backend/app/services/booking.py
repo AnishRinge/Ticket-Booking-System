@@ -185,6 +185,11 @@ class BookingService:
             seat.hold_expires_at = None
             db.add(seat)
 
+        # Integration: Trigger waitlist allocation for released seats
+        from app.services.waitlist import waitlist_service
+        for seat in show_seats:
+            waitlist_service.process_waitlist_for_seat(db, show_seat_id=seat.id, commit=False)
+
         try:
             db.commit()
             db.refresh(booking)

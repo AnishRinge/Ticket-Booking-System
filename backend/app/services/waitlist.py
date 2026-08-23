@@ -88,7 +88,7 @@ class WaitlistService:
             db, event_id=event_id, category_id=category_id, limit=limit
         )
 
-    def process_waitlist_for_seat(self, db: Session, *, show_seat_id: int) -> Optional[WaitlistOffer]:
+    def process_waitlist_for_seat(self, db: Session, *, show_seat_id: int, commit: bool = True) -> Optional[WaitlistOffer]:
         """
         Allocates an available seat to the first eligible waitlisted customer.
         """
@@ -130,25 +130,23 @@ class WaitlistService:
         # 8. Set the offer's server-controlled expiration timestamp.
         expires_at = datetime.now() + timedelta(seconds=settings.WAITLIST_OFFER_TTL_SECONDS)
         
-        offer = waitlist_offer_repository.create(
-            db,
-            obj_in={
-                "waitlist_entry_id": waitlist_entry.id,
-                "show_seat_id": show_seat_id,
-                "status": OfferStatus.ACTIVE,
-                "expires_at": expires_at
-            }
+        offer = WaitlistOffer(
+            waitlist_entry_id=waitlist_entry.id,
+            show_seat_id=show_seat_id,
+            status=OfferStatus.ACTIVE,
+            expires_at=expires_at
         )
+        db.add(offer)
+        db.flush()
 
         # Update WaitlistEntry status to OFFERED
-        waitlist_repository.update(
-            db,
-            db_obj=waitlist_entry,
-            obj_in={"status": WaitlistStatus.OFFERED}
-        )
+        waitlist_entry.status = WaitlistStatus.OFFERED
+        db.add(waitlist_entry)
+        db.flush()
 
-        db.commit()
-        db.refresh(offer)
+        if commit:
+            db.commit()
+            db.refresh(offer)
         return offer
 
     def accept_offer(self, db: Session, *, offer_id: int, user_id: int) -> Booking:
