@@ -88,6 +88,11 @@ class HoldService:
         show_seat.hold_expires_at = None
         
         db.add(show_seat)
+        
+        # Integration: Trigger waitlist allocation for released seat
+        from app.services.waitlist import waitlist_service
+        waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id, commit=False)
+        
         db.commit()
         db.refresh(show_seat)
         return show_seat
@@ -98,11 +103,15 @@ class HoldService:
     def cleanup_expired_holds(self, db: Session) -> int:
         expired_seats = show_seat_repository.get_expired_holds(db)
         count = 0
+        from app.services.waitlist import waitlist_service
         for seat in expired_seats:
             seat.status = SeatStatus.AVAILABLE
             seat.held_by_id = None
             seat.hold_expires_at = None
             db.add(seat)
+            
+            # Integration: Trigger waitlist allocation for released seat
+            waitlist_service.process_waitlist_for_seat(db, show_seat_id=seat.id, commit=False)
             count += 1
         
         if count > 0:

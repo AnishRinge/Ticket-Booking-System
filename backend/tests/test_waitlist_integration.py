@@ -205,6 +205,33 @@ def test_cancellation_no_duplicate_offers(client, db_session, integration_setup)
     offers = db.query(WaitlistOffer).filter(WaitlistOffer.show_seat_id == show_seat.id).all()
     assert len(offers) == 1
 
+def test_hold_release_triggers_waitlist(client, db_session, integration_setup):
+    """
+    Verify that releasing a hold also triggers waitlist allocation.
+    """
+    db = db_session
+    event, category, show_seat = integration_setup
+    
+    # 1. User 1 holds the seat
+    user1 = create_test_user(db, "h1@example.com")
+    token1 = get_token_for_user(db, user1)
+    hold_service.create_hold(db, show_seat_id=show_seat.id, user=user1)
+    
+    # 2. User 2 joins waitlist
+    user2 = create_test_user(db, "w1@example.com")
+    waitlist_service.join_waitlist(db, user_id=user2.id, event_id=event.id, category_id=category.id)
+    
+    # 3. User 1 releases hold
+    client.delete(
+        f"/api/v1/holds/{show_seat.id}",
+        headers={"Authorization": f"Bearer {token1}"}
+    )
+    
+    # 4. Verify User 2 got an offer
+    offer = db.query(WaitlistOffer).filter(WaitlistOffer.show_seat_id == show_seat.id).first()
+    assert offer is not None
+    assert offer.waitlist_entry.user_id == user2.id
+
 def test_cancellation_integration_transactional(client, db_session, integration_setup):
     # This test is hard to fully prove atomicity without mocking or forcing errors
     # but we can verify that if we don't commit, nothing changes.

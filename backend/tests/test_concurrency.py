@@ -4,9 +4,11 @@ from datetime import datetime, timedelta
 
 from app.models import User, UserRole
 from app.models.venue import Venue, SeatCategory, Seat
-from app.models.event import Event
+from app.models.event import Event, EventCategoryPricing
 from app.models.inventory import ShowSeat, SeatStatus
+from app.models.waitlist import WaitlistEntry, WaitlistStatus, WaitlistOffer, OfferStatus
 from app.services.hold import hold_service
+from app.services.waitlist import waitlist_service
 from app.core.exceptions import AppException
 
 def create_test_data(db, num_customers=10):
@@ -30,6 +32,10 @@ def create_test_data(db, num_customers=10):
     
     e = Event(title="E", venue_id=v.id, organiser_id=1, start_time=datetime.now() + timedelta(days=1))
     db.add(e)
+    db.flush()
+
+    p = EventCategoryPricing(event_id=e.id, category_id=cat.id, price=1000)
+    db.add(p)
     db.flush()
     
     ss = ShowSeat(event_id=e.id, physical_seat_id=s.id, status=SeatStatus.AVAILABLE)
@@ -193,3 +199,117 @@ def test_independent_seats_not_blocked(db_session, session_factory):
     
     assert "SUCCESS1" in results
     assert "SUCCESS2" in results
+
+def test_concurrent_waitlist_allocation(db_session, session_factory):
+    """
+    Race A: Two attempts to allocate the same ShowSeat.
+    Expected: Only one active offer.
+    """
+    db = db_session
+    num_customers = 5
+    ss_id, customer_ids = create_test_data(db, num_customers)
+    
+    # 2 customers join waitlist
+    ss = db.get(ShowSeat, ss_id)
+    for i in range(2):
+        waitlist_service.join_waitlist(db, user_id=customer_ids[i], event_id=ss.event_id, category_id=ss.physical_seat.category_id)
+    db.commit()
+    
+    results = []
+    barrier = threading.Barrier(num_customers)
+    
+    def worker(customer_id):
+        barrier.wait()
+        tdb = session_factory()
+        try:
+            with sqlite_sim_lock:
+                offer = waitlist_service.process_waitlist_for_seat(tdb, show_seat_id=ss_id)
+                if offer:
+                    results.append(("SUCCESS", customer_id))
+                else:
+                    results.append(("NONE", customer_id))
+        except Exception as e:
+            results.append(("ERROR", str(e)))
+        finally:
+            tdb.close()
+
+    threads = [threading.Thread(target=worker, args=(cid,)) for cid in customer_ids]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    
+    successes = [r for r in results if r[0] == "SUCCESS"]
+    nones = [r for r in results if r[0] == "NONE"]
+    
+    assert len(successes) == 1
+    assert len(nones) == num_customers - 1
+    
+    # Verify only one offer exists in DB
+    offers = db.query(WaitlistOffer).filter(WaitlistOffer.show_seat_id == ss_id).all()
+    assert len(offers) == 1
+
+def test_concurrent_offer_acceptance_and_expiration(db_session, session_factory):
+    """
+    Race C: Offer expiration and offer acceptance happen near the same time.
+    Expected: The system ends in one valid state (ACCEPTED or EXPIRED, not both).
+    """
+    db = db_session
+    ss_id, customer_ids = create_test_data(db, 2)
+    user_id = customer_ids[0]
+    ss = db.get(ShowSeat, ss_id)
+    
+    waitlist_service.join_waitlist(db, user_id=user_id, event_id=ss.event_id, category_id=ss.physical_seat.category_id)
+    offer = waitlist_service.process_waitlist_for_seat(db, show_seat_id=ss_id)
+    offer_id = offer.id
+    db.commit()
+    
+    # Set offer to be just about to expire or already expired
+    db.query(WaitlistOffer).filter(WaitlistOffer.id == offer_id).update({"expires_at": datetime.now() - timedelta(seconds=1)})
+    db.commit()
+    
+    results = []
+    barrier = threading.Barrier(2)
+    
+    def accept_worker():
+        barrier.wait()
+        tdb = session_factory()
+        try:
+            with sqlite_sim_lock:
+                waitlist_service.accept_offer(tdb, offer_id=offer_id, user_id=user_id)
+            results.append("ACCEPTED_WIN")
+        except AppException as e:
+            results.append(f"ACCEPTED_FAIL: {e.message}")
+        except Exception as e:
+            results.append(f"ACCEPTED_ERROR: {str(e)}")
+        finally:
+            tdb.close()
+            
+    def expire_worker():
+        barrier.wait()
+        tdb = session_factory()
+        try:
+            with sqlite_sim_lock:
+                waitlist_service.expire_offer(tdb, offer_id=offer_id)
+            results.append("EXPIRED_DONE")
+        except Exception as e:
+            results.append(f"EXPIRED_ERROR: {str(e)}")
+        finally:
+            tdb.close()
+
+    t1 = threading.Thread(target=accept_worker)
+    t2 = threading.Thread(target=expire_worker)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    
+    # Verify consistency: The offer should be either ACCEPTED or EXPIRED, not both or stuck.
+    db.refresh(offer)
+    if offer.status == OfferStatus.ACCEPTED:
+        assert "ACCEPTED_WIN" in results
+        # In this case, expire_worker might have seen it was already ACCEPTED or 
+        # it might have run first but accept_worker won the lock? No, if expire won, it becomes EXPIRED.
+    elif offer.status == OfferStatus.EXPIRED:
+        assert any("ACCEPTED_FAIL" in r for r in results)
+        assert "EXPIRED_DONE" in results
+    else:
+        pytest.fail(f"Unexpected offer status: {offer.status}")
