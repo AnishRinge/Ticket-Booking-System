@@ -42,6 +42,32 @@ class Settings(BaseSettings):
     WAITLIST_OFFER_TTL_SECONDS: int = 900  # 15 minutes
     CLEANUP_INTERVAL_SECONDS: int = 60  # 1 minute
 
+    # Redis / ARQ
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_URL: str | None = None
+
+    def get_redis_url(self) -> str:
+        if self.REDIS_URL:
+            return self.REDIS_URL
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    # Email Configuration
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_TLS: bool = False
+    SMTP_SSL: bool = False
+    EMAILS_FROM_EMAIL: str = "noreply@ticketbooking.com"
+    EMAILS_FROM_NAME: str = "Ticket Booking System"
+
+    # Worker Configuration
+    WORKER_RETRY_DELAY_SECONDS: int = 5
+    WORKER_MAX_RETRIES: int = 3
+
     # Logging
     LOG_LEVEL: str = "INFO"
 

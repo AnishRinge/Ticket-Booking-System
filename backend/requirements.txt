@@ -11,3 +11,6 @@ httpx
 argon2-cffi
 pyjwt
 email-validator
+arq
+redis
+qrcode[pil]

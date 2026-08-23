@@ -166,6 +166,11 @@ class WaitlistService:
         if commit:
             db.commit()
             db.refresh(offer)
+            
+            # Integration: Trigger notification
+            from app.services.notification import notification_service
+            notification_service.send_waitlist_offer_notification_sync(offer.id)
+            
         return offer
 
     def accept_offer(self, db: Session, *, offer_id: int, user_id: int) -> Booking:

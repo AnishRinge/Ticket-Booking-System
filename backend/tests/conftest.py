@@ -76,3 +76,17 @@ def client():
         yield test_client
 
     app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture(autouse=True)
+def mock_redis_pool():
+    """
+    Globally mocks the ARQ Redis pool to prevent tests from attempting 
+    real Redis connections.
+    """
+    from unittest.mock import AsyncMock, patch
+    
+    mock_pool = AsyncMock()
+    with patch("app.core.worker.get_redis_pool", return_value=mock_pool), \
+         patch("app.core.worker.create_pool", return_value=mock_pool):
+        yield mock_pool

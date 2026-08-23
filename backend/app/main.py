@@ -7,6 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
+from app.core.worker import close_redis_pool
 from app.core.exceptions import (
     AppException,
     app_exception_handler,
@@ -65,3 +66,4 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Application shutting down...")
     await stop_scheduler()
+    await close_redis_pool()

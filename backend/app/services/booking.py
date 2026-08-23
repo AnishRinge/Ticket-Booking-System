@@ -122,6 +122,11 @@ class BookingService:
         try:
             db.commit()
             db.refresh(booking)
+            
+            # Integration: Trigger fulfillment (QR + Email)
+            from app.services.notification import notification_service
+            notification_service.send_booking_confirmation_sync(booking.id)
+
             return booking
         except Exception as e:
             db.rollback()

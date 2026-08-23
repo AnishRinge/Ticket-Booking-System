@@ -236,12 +236,22 @@ The following must be wrapped in ACID transactions:
 * **Two users attempting the same seat:** Solved by DB row-level locking.
 * **Hold expires during checkout:** Backend re-validates `expires_at` before final commit.
 * **Waitlist offer expires:** Background worker detects expiry and moves to the next user in FIFO.
-* **Email delivery fails:** Worker retries via Redis-backed task queue.
+* **Email delivery fails:** Worker retries via Redis-backed task queue with at-least-once delivery semantics.
+* **Redis enqueuing fails:** If Redis is down when enqueuing a notification AFTER a business transaction commits, the transaction remains committed (booking/offer is valid). The failure is logged, but the business flow is not interrupted.
 * **WebSocket disconnect:** Client UI falls back to polling or full refresh on reconnect.
 
 ---
 
-## 15. PROJECT STRUCTURE
+## 15. FULFILLMENT SEMANTICS (PHASE 12)
+
+* **Asynchronous Fulfillment:** QR generation and email delivery are decoupled from business transactions.
+* **At-Least-Once Delivery:** Due to the nature of the task queue (ARQ), jobs may be executed more than once in case of worker crashes or network issues. The system does NOT guarantee exactly-once email delivery.
+* **Reliability:** Failed fulfillment jobs are automatically retried with a configurable delay.
+* **Independence:** Business transactions MUST NOT depend on the success of the fulfillment system (Email/QR).
+
+---
+
+## 16. PROJECT STRUCTURE
 
 ```text
 /
@@ -263,7 +273,7 @@ The following must be wrapped in ACID transactions:
 
 ---
 
-## 16. IMPLEMENTATION PHASE DEPENDENCIES
+## 17. IMPLEMENTATION PHASE DEPENDENCIES
 
 1. **Phases 1-3:** Foundation (Database, Models, Auth).
 2. **Phases 4-6:** Static Data (Venues, Layouts, Events).
@@ -273,7 +283,7 @@ The following must be wrapped in ACID transactions:
 
 ---
 
-## 17. ARCHITECTURAL DECISIONS
+## 18. ARCHITECTURAL DECISIONS
 
 * **PostgreSQL:** Chosen for row-level locking and ACID compliance.
 * **Redis + Worker:** Chosen for reliable TTL management and background processing.
