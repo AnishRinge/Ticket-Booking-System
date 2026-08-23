@@ -61,3 +61,28 @@ def accept_offer(
         message="Offer accepted and booking confirmed",
         data=booking
     )
+
+@router.post("/offers/{offer_id}/decline", response_model=ResponseSchema[dict])
+def decline_offer(
+    offer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Decline a waitlist offer. Only for CUSTOMER who owns the offer.
+    """
+    if current_user.role != UserRole.CUSTOMER:
+        raise AppException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            message="Only customers can decline waitlist offers"
+        )
+    
+    waitlist_service.decline_offer(
+        db,
+        offer_id=offer_id,
+        user_id=current_user.id
+    )
+    return ResponseSchema(
+        message="Offer declined and seat released for next customer",
+        data={"offer_id": offer_id}
+    )

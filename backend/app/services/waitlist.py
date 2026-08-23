@@ -75,11 +75,30 @@ class WaitlistService:
                 message=f"Cannot leave waitlist with status {entry.status}"
             )
 
-        return waitlist_repository.update(
-            db,
-            db_obj=entry,
-            obj_in={"status": WaitlistStatus.CANCELLED}
-        )
+        # If the user leaves while having an active offer, we must invalidate that offer
+        # to release the seat for the next person in line.
+        active_offer = waitlist_offer_repository.get_active_offer_for_seat(db, show_seat_id=None) 
+        # Actually, we should find active offer for this specific waitlist entry.
+        active_offer = db.query(WaitlistOffer).filter(
+            WaitlistOffer.waitlist_entry_id == entry.id,
+            WaitlistOffer.status == OfferStatus.ACTIVE
+        ).first()
+
+        if active_offer:
+            active_offer.status = OfferStatus.DECLINED
+            db.add(active_offer)
+            db.flush()
+            # We will promote the next customer after updating the entry status.
+
+        entry.status = WaitlistStatus.CANCELLED
+        db.add(entry)
+        db.commit()
+
+        if active_offer:
+            # Promote next customer
+            self.process_waitlist_for_seat(db, show_seat_id=active_offer.show_seat_id)
+
+        return entry
 
     def get_fifo_waitlist(
         self, db: Session, *, event_id: int, category_id: int, limit: int = 10
@@ -225,6 +244,59 @@ class WaitlistService:
         db.commit()
 
         return booking
+
+    def decline_offer(self, db: Session, *, offer_id: int, user_id: int) -> None:
+        """
+        Explicitly declines a waitlist offer and promotes the next customer.
+        """
+        # 1. Lock the offer
+        offer = (
+            db.query(WaitlistOffer)
+            .filter(WaitlistOffer.id == offer_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not offer:
+            raise AppException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Waitlist offer not found"
+            )
+
+        # 2. Ownership check
+        if offer.waitlist_entry.user_id != user_id:
+            raise AppException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                message="This offer does not belong to you"
+            )
+
+        # 3. Status check - only ACTIVE can be declined
+        if offer.status != OfferStatus.ACTIVE:
+            raise AppException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message=f"Offer is not active (status: {offer.status})"
+            )
+
+        # 4. Expiration check (idempotent promote if already expired)
+        if offer.expires_at <= datetime.now():
+            self.expire_offer(db, offer_id=offer.id)
+            raise AppException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Offer has already expired"
+            )
+
+        # 5. Mark as DECLINED
+        offer.status = OfferStatus.DECLINED
+        db.add(offer)
+
+        # 6. Mark waitlist entry as CANCELLED
+        offer.waitlist_entry.status = WaitlistStatus.CANCELLED
+        db.add(offer.waitlist_entry)
+
+        db.commit()
+
+        # 7. Promote next customer
+        self.process_waitlist_for_seat(db, show_seat_id=offer.show_seat_id)
 
     def expire_offer(self, db: Session, *, offer_id: int) -> None:
         """
