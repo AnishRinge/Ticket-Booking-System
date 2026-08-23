@@ -7,6 +7,7 @@ from fastapi import status
 from app.models.inventory import ShowSeat, SeatStatus
 from app.models.user import User
 from app.repositories.inventory import show_seat_repository
+from app.repositories.waitlist import waitlist_offer_repository
 from app.core.exceptions import AppException
 from app.core.config import settings
 
@@ -40,6 +41,16 @@ class HoldService:
              raise AppException(
                 status_code=status.HTTP_409_CONFLICT,
                 message="Seat is not available for holding."
+            )
+        
+        # Check if there's an active waitlist offer for this seat.
+        # If so, it's reserved and cannot be held by anyone else.
+        active_offer = waitlist_offer_repository.get_active_offer_for_seat(db, show_seat_id=show_seat_id)
+        if active_offer:
+            db.rollback()
+            raise AppException(
+                status_code=status.HTTP_409_CONFLICT,
+                message="Seat is reserved for waitlist."
             )
 
         # Apply the hold state.

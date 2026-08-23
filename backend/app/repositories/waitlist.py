@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -50,5 +51,14 @@ class WaitlistOfferRepository(BaseRepository[WaitlistOffer]):
                 self.model.status == OfferStatus.ACTIVE
             )
         ).first()
+
+    def get_expired_offers(self, db: Session) -> List[WaitlistOffer]:
+        """Get all active offers that have expired."""
+        return db.query(self.model).filter(
+            and_(
+                self.model.status == OfferStatus.ACTIVE,
+                self.model.expires_at <= datetime.now()
+            )
+        ).all()
 
 waitlist_offer_repository = WaitlistOfferRepository(WaitlistOffer)

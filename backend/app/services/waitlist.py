@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from fastapi import status
 from app.models.waitlist import WaitlistEntry, WaitlistStatus, WaitlistOffer, OfferStatus
 from app.models.inventory import ShowSeat, SeatStatus
+from app.models.booking import Booking
+from app.models.user import User
 from app.repositories.waitlist import waitlist_repository, waitlist_offer_repository
 from app.repositories.event import event_repository, event_pricing_repository
 from app.core.exceptions import AppException
@@ -148,5 +150,128 @@ class WaitlistService:
         db.commit()
         db.refresh(offer)
         return offer
+
+    def accept_offer(self, db: Session, *, offer_id: int, user_id: int) -> Booking:
+        """
+        Accepts a waitlist offer and converts it into a booking.
+        """
+        # 1. Lock the offer
+        offer = (
+            db.query(WaitlistOffer)
+            .filter(WaitlistOffer.id == offer_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not offer:
+            raise AppException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Waitlist offer not found"
+            )
+
+        # 2. Offer belongs to the authenticated customer
+        if offer.waitlist_entry.user_id != user_id:
+            raise AppException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                message="This offer does not belong to you"
+            )
+
+        # 3. Offer is still active
+        if offer.status != OfferStatus.ACTIVE:
+            raise AppException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message=f"Offer is not active (status: {offer.status})"
+            )
+
+        # 4. Offer has not expired
+        if offer.expires_at <= datetime.now():
+            # Idempotently mark as expired if we caught it here
+            self.expire_offer(db, offer_id=offer.id)
+            raise AppException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Offer has expired"
+            )
+
+        # 5. Associated ShowSeat is still valid
+        show_seat = (
+            db.query(ShowSeat)
+            .filter(ShowSeat.id == offer.show_seat_id)
+            .with_for_update()
+            .first()
+        )
+        if not show_seat or show_seat.status != SeatStatus.AVAILABLE:
+            raise AppException(
+                status_code=status.HTTP_409_CONFLICT,
+                message="The seat is no longer available"
+            )
+
+        # 6. Convert to booking using existing architecture
+        # We temporarily set the seat to HELD so BookingService can process it
+        show_seat.status = SeatStatus.HELD
+        show_seat.held_by_id = user_id
+        show_seat.hold_expires_at = datetime.now() + timedelta(minutes=5)
+        db.add(show_seat)
+        db.flush()
+
+        from app.services.booking import booking_service
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        # confirm_booking will commit the transaction
+        booking = booking_service.confirm_booking(db, [show_seat.id], user)
+
+        # Update offer and entry status
+        offer.status = OfferStatus.ACCEPTED
+        offer.waitlist_entry.status = WaitlistStatus.ACCEPTED
+        db.add(offer)
+        db.add(offer.waitlist_entry)
+        db.commit()
+
+        return booking
+
+    def expire_offer(self, db: Session, *, offer_id: int) -> None:
+        """
+        Marks an offer as EXPIRED and releases the seat for the next customer.
+        """
+        # 1. Lock the offer
+        offer = (
+            db.query(WaitlistOffer)
+            .filter(WaitlistOffer.id == offer_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not offer or offer.status != OfferStatus.ACTIVE:
+            return
+
+        # 2. Check if actually expired (idempotency)
+        if offer.expires_at > datetime.now():
+            return
+
+        # 3. Mark the offer as EXPIRED
+        offer.status = OfferStatus.EXPIRED
+        db.add(offer)
+
+        # 4. Update WaitlistEntry status
+        # If an offer expires, the entry also becomes EXPIRED (customer lost their chance)
+        offer.waitlist_entry.status = WaitlistStatus.EXPIRED
+        db.add(offer.waitlist_entry)
+
+        # We don't need to manually release the seat as it stayed AVAILABLE.
+        # But we must find the next eligible FIFO customer.
+        db.commit() # Commit offer status change before trying next allocation
+
+        # 5. Find the next eligible FIFO waitlist customer
+        self.process_waitlist_for_seat(db, show_seat_id=offer.show_seat_id)
+
+    def cleanup_expired_offers(self, db: Session) -> int:
+        """
+        Periodically called to clean up all expired offers.
+        """
+        expired_offers = waitlist_offer_repository.get_expired_offers(db)
+        count = 0
+        for offer in expired_offers:
+            self.expire_offer(db, offer_id=offer.id)
+            count += 1
+        return count
 
 waitlist_service = WaitlistService()
