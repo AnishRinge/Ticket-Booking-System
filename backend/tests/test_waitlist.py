@@ -4,7 +4,8 @@ from fastapi import status
 from app.models import User, UserRole
 from app.models.venue import Venue, SeatCategory, Seat
 from app.models.event import Event, EventCategoryPricing
-from app.models.waitlist import WaitlistStatus, WaitlistEntry
+from app.models.waitlist import WaitlistStatus, WaitlistEntry, OfferStatus
+from app.models.inventory import SeatStatus, ShowSeat
 from app.core.security import get_password_hash, create_access_token
 
 def get_token_for_role(db, role: UserRole, email: str = "test@example.com"):
@@ -46,6 +47,16 @@ def setup_event_context(db):
     db.commit()
     
     return e, c
+
+def setup_seat_for_event(db, event, category):
+    s = Seat(venue_id=event.venue_id, category_id=category.id, row_identifier="A", seat_number=1)
+    db.add(s)
+    db.commit()
+    
+    ss = ShowSeat(event_id=event.id, physical_seat_id=s.id, status=SeatStatus.AVAILABLE)
+    db.add(ss)
+    db.commit()
+    return ss
 
 def test_join_waitlist_customer(client, db_session):
     db = db_session
@@ -215,3 +226,89 @@ def test_fifo_retrieval(client, db_session):
     
     # Verify deterministic ordering
     assert fifo_entries[0].id < fifo_entries[1].id < fifo_entries[2].id
+
+def test_process_waitlist_for_seat_success(db_session):
+    db = db_session
+    event, category = setup_event_context(db)
+    show_seat = setup_seat_for_event(db, event, category)
+    
+    # Customer joins waitlist
+    _, user_id = get_token_for_role(db, UserRole.CUSTOMER)
+    from app.services.waitlist import waitlist_service
+    waitlist_service.join_waitlist(db, user_id=user_id, event_id=event.id, category_id=category.id)
+    
+    # Process waitlist for seat
+    offer = waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id)
+    
+    assert offer is not None
+    assert offer.show_seat_id == show_seat.id
+    assert offer.status == OfferStatus.ACTIVE
+    assert offer.expires_at > datetime.now()
+    
+    # Check waitlist entry status
+    entry = db.query(WaitlistEntry).filter(WaitlistEntry.id == offer.waitlist_entry_id).first()
+    assert entry.status == WaitlistStatus.OFFERED
+
+def test_process_waitlist_for_seat_empty_waitlist(db_session):
+    db = db_session
+    event, category = setup_event_context(db)
+    show_seat = setup_seat_for_event(db, event, category)
+    
+    from app.services.waitlist import waitlist_service
+    offer = waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id)
+    
+    assert offer is None
+
+def test_process_waitlist_for_seat_non_available(db_session):
+    db = db_session
+    event, category = setup_event_context(db)
+    show_seat = setup_seat_for_event(db, event, category)
+    show_seat.status = SeatStatus.BOOKED
+    db.commit()
+    
+    # Customer joins waitlist
+    _, user_id = get_token_for_role(db, UserRole.CUSTOMER)
+    from app.services.waitlist import waitlist_service
+    waitlist_service.join_waitlist(db, user_id=user_id, event_id=event.id, category_id=category.id)
+    
+    offer = waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id)
+    assert offer is None
+
+def test_process_waitlist_for_seat_fifo_order(db_session):
+    db = db_session
+    event, category = setup_event_context(db)
+    show_seat = setup_seat_for_event(db, event, category)
+    
+    # 3 Customers join waitlist
+    user_ids = []
+    for i in range(3):
+        _, user_id = get_token_for_role(db, UserRole.CUSTOMER, f"c{i}@test.com")
+        user_ids.append(user_id)
+        from app.services.waitlist import waitlist_service
+        waitlist_service.join_waitlist(db, user_id=user_id, event_id=event.id, category_id=category.id)
+    
+    # Process waitlist for seat
+    offer = waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id)
+    
+    assert offer is not None
+    entry = db.query(WaitlistEntry).filter(WaitlistEntry.id == offer.waitlist_entry_id).first()
+    assert entry.user_id == user_ids[0]
+
+def test_process_waitlist_for_seat_duplicate_offer_prevention(db_session):
+    db = db_session
+    event, category = setup_event_context(db)
+    show_seat = setup_seat_for_event(db, event, category)
+    
+    # 2 Customers join waitlist
+    for i in range(2):
+        _, user_id = get_token_for_role(db, UserRole.CUSTOMER, f"c{i}@test.com")
+        from app.services.waitlist import waitlist_service
+        waitlist_service.join_waitlist(db, user_id=user_id, event_id=event.id, category_id=category.id)
+    
+    # Process waitlist for seat first time
+    offer1 = waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id)
+    assert offer1 is not None
+    
+    # Process waitlist for seat second time (should not create another offer for same seat)
+    offer2 = waitlist_service.process_waitlist_for_seat(db, show_seat_id=show_seat.id)
+    assert offer2 is None

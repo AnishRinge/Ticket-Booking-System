@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     SEAT_HOLD_TTL_SECONDS: int = 600  # 10 minutes
+    WAITLIST_OFFER_TTL_SECONDS: int = 900  # 15 minutes
 
     # Logging
     LOG_LEVEL: str = "INFO"

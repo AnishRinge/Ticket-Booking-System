@@ -1,10 +1,13 @@
 from typing import List, Optional
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import status
-from app.models.waitlist import WaitlistEntry, WaitlistStatus
-from app.repositories.waitlist import waitlist_repository
+from app.models.waitlist import WaitlistEntry, WaitlistStatus, WaitlistOffer, OfferStatus
+from app.models.inventory import ShowSeat, SeatStatus
+from app.repositories.waitlist import waitlist_repository, waitlist_offer_repository
 from app.repositories.event import event_repository, event_pricing_repository
 from app.core.exceptions import AppException
+from app.core.config import settings
 
 class WaitlistService:
     def join_waitlist(
@@ -82,5 +85,68 @@ class WaitlistService:
         return waitlist_repository.get_fifo_waitlist(
             db, event_id=event_id, category_id=category_id, limit=limit
         )
+
+    def process_waitlist_for_seat(self, db: Session, *, show_seat_id: int) -> Optional[WaitlistOffer]:
+        """
+        Allocates an available seat to the first eligible waitlisted customer.
+        """
+        # 1. Lock the relevant ShowSeat
+        show_seat = (
+            db.query(ShowSeat)
+            .filter(ShowSeat.id == show_seat_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not show_seat:
+            return None
+
+        # 2. Verify that the ShowSeat is actually available for allocation.
+        # Do not allocate BOOKED or HELD inventory.
+        if show_seat.status != SeatStatus.AVAILABLE:
+            return None
+
+        # 9. The same ShowSeat cannot simultaneously receive another active offer.
+        existing_offer = waitlist_offer_repository.get_active_offer_for_seat(db, show_seat_id=show_seat_id)
+        if existing_offer:
+            return None
+
+        # 3. Determine its event.
+        event_id = show_seat.event_id
+        
+        # 4. Determine its physical seat category.
+        category_id = show_seat.physical_seat.category_id
+
+        # 5. Retrieve the first eligible active WaitlistEntry
+        fifo_entries = self.get_fifo_waitlist(db, event_id=event_id, category_id=category_id, limit=1)
+        if not fifo_entries:
+            return None
+        
+        waitlist_entry = fifo_entries[0]
+
+        # 6. Create a WaitlistOffer for that customer.
+        # 8. Set the offer's server-controlled expiration timestamp.
+        expires_at = datetime.now() + timedelta(seconds=settings.WAITLIST_OFFER_TTL_SECONDS)
+        
+        offer = waitlist_offer_repository.create(
+            db,
+            obj_in={
+                "waitlist_entry_id": waitlist_entry.id,
+                "show_seat_id": show_seat_id,
+                "status": OfferStatus.ACTIVE,
+                "expires_at": expires_at
+            }
+        )
+
+        # Update WaitlistEntry status to OFFERED
+        waitlist_repository.update(
+            db,
+            db_obj=waitlist_entry,
+            obj_in={"status": WaitlistStatus.OFFERED}
+        )
+
+        db.commit()
+        db.refresh(offer)
+        return offer
 
 waitlist_service = WaitlistService()

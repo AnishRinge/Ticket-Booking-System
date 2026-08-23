@@ -1,7 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from app.models.waitlist import WaitlistEntry, WaitlistStatus
+from app.models.waitlist import WaitlistEntry, WaitlistStatus, WaitlistOffer, OfferStatus
 from app.repositories.base import BaseRepository
 
 class WaitlistRepository(BaseRepository[WaitlistEntry]):
@@ -40,3 +40,15 @@ class WaitlistRepository(BaseRepository[WaitlistEntry]):
         ).all()
 
 waitlist_repository = WaitlistRepository(WaitlistEntry)
+
+class WaitlistOfferRepository(BaseRepository[WaitlistOffer]):
+    def get_active_offer_for_seat(self, db: Session, *, show_seat_id: int) -> Optional[WaitlistOffer]:
+        """Get an active offer for a specific show seat."""
+        return db.query(self.model).filter(
+            and_(
+                self.model.show_seat_id == show_seat_id,
+                self.model.status == OfferStatus.ACTIVE
+            )
+        ).first()
+
+waitlist_offer_repository = WaitlistOfferRepository(WaitlistOffer)
