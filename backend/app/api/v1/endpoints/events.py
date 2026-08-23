@@ -6,6 +6,7 @@ from app.api import deps
 from app.db.deps import get_db
 from app.schemas.event import EventCreate, EventUpdate, EventResponse
 from app.schemas.inventory import ShowSeatResponse, SeatMapResponse
+from app.schemas.waitlist import WaitlistEntryResponse, WaitlistEntryCreate
 from app.schemas.base import ResponseSchema
 from app.services.event import event_service
 from app.services.inventory import inventory_service
@@ -127,4 +128,34 @@ def get_seat_map(
     return ResponseSchema(
         message="Seat map retrieved successfully",
         data=SeatMapResponse(event_id=event_id, seats=inventory)
+    )
+
+@router.post("/{event_id}/waitlist", response_model=ResponseSchema[WaitlistEntryResponse], status_code=status.HTTP_201_CREATED)
+def join_waitlist(
+    event_id: int,
+    waitlist_in: WaitlistEntryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Join the waitlist for an event and category. Only for CUSTOMER.
+    """
+    if current_user.role != UserRole.CUSTOMER:
+        from app.core.exceptions import AppException
+        raise AppException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            message="Only customers can join the waitlist"
+        )
+    
+    from app.services.waitlist import waitlist_service
+    entry = waitlist_service.join_waitlist(
+        db,
+        user_id=current_user.id,
+        event_id=event_id,
+        category_id=waitlist_in.category_id
+    )
+    return ResponseSchema(
+        message="Joined waitlist successfully",
+        data=entry,
+        status_code=status.HTTP_201_CREATED
     )
