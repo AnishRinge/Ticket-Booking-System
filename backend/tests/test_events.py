@@ -161,3 +161,118 @@ def test_delete_event_ownership(client, db_session):
     headers1 = {"Authorization": f"Bearer {token1}"}
     response = client.delete(f"/api/v1/events/{e_id}", headers=headers1)
     assert response.status_code == 200
+
+def test_delete_event_with_bookings_blocked(client, db_session):
+    db = db_session
+    from app.models.venue import Seat
+    from app.models.event import EventCategoryPricing
+    from app.models.inventory import ShowSeat, SeatStatus
+    from app.models.booking import Booking, BookingSeat, BookingStatus
+
+    token1, user1_id = get_token_for_role(db, UserRole.ORGANISER, "o1@example.com")
+    v_id, c_id = create_venue_and_category(db)
+
+    e = Event(title="Has bookings", venue_id=v_id, organiser_id=user1_id, start_time=datetime.now() + timedelta(days=1))
+    db.add(e)
+    db.commit()
+
+    s = Seat(venue_id=v_id, category_id=c_id, row_identifier="B", seat_number=1)
+    db.add(s)
+    db.commit()
+
+    ss = ShowSeat(event_id=e.id, physical_seat_id=s.id, status=SeatStatus.BOOKED)
+    db.add(ss)
+    db.commit()
+
+    booking = Booking(user_id=user1_id, event_id=e.id, status=BookingStatus.CONFIRMED, total_price=500)
+    db.add(booking)
+    db.commit()
+
+    bs = BookingSeat(booking_id=booking.id, show_seat_id=ss.id, price_at_booking=500)
+    db.add(bs)
+    db.commit()
+
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    response = client.delete(f"/api/v1/events/{e.id}", headers=headers1)
+    assert response.status_code == 400
+    assert "bookings" in response.json()["message"].lower()
+
+def test_delete_event_with_waitlist_entry_blocked(client, db_session):
+    db = db_session
+    from app.models.waitlist import WaitlistEntry, WaitlistStatus
+
+    token1, user1_id = get_token_for_role(db, UserRole.ORGANISER, "o1@example.com")
+    token2, user2_id = get_token_for_role(db, UserRole.CUSTOMER, "c1@example.com")
+    v_id, c_id = create_venue_and_category(db)
+
+    e = Event(title="Has waitlist", venue_id=v_id, organiser_id=user1_id, start_time=datetime.now() + timedelta(days=1))
+    db.add(e)
+    db.commit()
+
+    entry = WaitlistEntry(user_id=user2_id, event_id=e.id, category_id=c_id, status=WaitlistStatus.PENDING)
+    db.add(entry)
+    db.commit()
+
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    response = client.delete(f"/api/v1/events/{e.id}", headers=headers1)
+    assert response.status_code == 400
+    assert "waitlist" in response.json()["message"].lower()
+
+    # Event must still exist
+    assert db.query(Event).filter(Event.id == e.id).first() is not None
+
+def test_delete_event_with_waitlist_offer_blocked(client, db_session):
+    db = db_session
+    from app.models.venue import Seat
+    from app.models.inventory import ShowSeat, SeatStatus
+    from app.models.waitlist import WaitlistEntry, WaitlistOffer, WaitlistStatus, OfferStatus
+
+    token1, user1_id = get_token_for_role(db, UserRole.ORGANISER, "o1@example.com")
+    _, user2_id = get_token_for_role(db, UserRole.CUSTOMER, "c1@example.com")
+    v_id, c_id = create_venue_and_category(db)
+
+    e = Event(title="Has waitlist offer", venue_id=v_id, organiser_id=user1_id, start_time=datetime.now() + timedelta(days=1))
+    db.add(e)
+    db.commit()
+
+    s = Seat(venue_id=v_id, category_id=c_id, row_identifier="C", seat_number=1)
+    db.add(s)
+    db.commit()
+
+    ss = ShowSeat(event_id=e.id, physical_seat_id=s.id, status=SeatStatus.AVAILABLE)
+    db.add(ss)
+    db.commit()
+
+    # Entry already resolved (accepted) but the offer record still references the event's seat
+    entry = WaitlistEntry(user_id=user2_id, event_id=e.id, category_id=c_id, status=WaitlistStatus.ACCEPTED)
+    db.add(entry)
+    db.commit()
+
+    offer = WaitlistOffer(
+        waitlist_entry_id=entry.id,
+        show_seat_id=ss.id,
+        status=OfferStatus.EXPIRED,
+        expires_at=datetime.now() - timedelta(minutes=5),
+    )
+    db.add(offer)
+    db.commit()
+
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    response = client.delete(f"/api/v1/events/{e.id}", headers=headers1)
+    assert response.status_code == 400
+    assert "waitlist" in response.json()["message"].lower()
+
+def test_delete_event_without_bookings_or_waitlist_succeeds(client, db_session):
+    db = db_session
+    token1, user1_id = get_token_for_role(db, UserRole.ORGANISER, "o1@example.com")
+    v_id, c_id = create_venue_and_category(db)
+
+    e = Event(title="Clean event", venue_id=v_id, organiser_id=user1_id, start_time=datetime.now() + timedelta(days=1))
+    db.add(e)
+    db.commit()
+    e_id = e.id
+
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    response = client.delete(f"/api/v1/events/{e_id}", headers=headers1)
+    assert response.status_code == 200
+    assert db.query(Event).filter(Event.id == e_id).first() is None

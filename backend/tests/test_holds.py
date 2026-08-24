@@ -47,6 +47,24 @@ def test_customer_create_hold(client, db_session):
     assert response.json()["data"]["show_seat"]["status"] == "HELD"
     assert response.json()["data"]["show_seat"]["hold_expires_at"] is not None
 
+def test_organiser_cannot_create_hold(client, db_session):
+    db = db_session
+    token, _ = get_token_for_role(db, UserRole.ORGANISER)
+    ss_id = setup_event_with_inventory(db, 999)
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/v1/holds", json={"show_seat_id": ss_id}, headers=headers)
+    assert response.status_code == 403
+
+def test_admin_cannot_create_hold(client, db_session):
+    db = db_session
+    token, _ = get_token_for_role(db, UserRole.ADMIN)
+    ss_id = setup_event_with_inventory(db, 999)
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/v1/holds", json={"show_seat_id": ss_id}, headers=headers)
+    assert response.status_code == 403
+
 def test_hold_conflict(client, db_session):
     db = db_session
     token1, _ = get_token_for_role(db, UserRole.CUSTOMER, "c1@example.com")

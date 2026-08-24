@@ -80,6 +80,24 @@ def test_confirm_booking_success(client, db_session):
     assert len(bs) == 2
     assert bs[0].price_at_booking == 500.0
 
+def test_organiser_cannot_confirm_booking(client, db_session):
+    db = db_session
+    token, _ = get_token_for_role(db, UserRole.ORGANISER)
+    ss1_id, _, _ = setup_booking_context(db, 999)
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/v1/bookings/", json={"show_seat_ids": [ss1_id]}, headers=headers)
+    assert response.status_code == 403
+
+def test_admin_cannot_confirm_booking(client, db_session):
+    db = db_session
+    token, _ = get_token_for_role(db, UserRole.ADMIN)
+    ss1_id, _, _ = setup_booking_context(db, 999)
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/v1/bookings/", json={"show_seat_ids": [ss1_id]}, headers=headers)
+    assert response.status_code == 403
+
 def test_confirm_booking_invalid_hold_ownership(client, db_session):
     db = db_session
     token1, _ = get_token_for_role(db, UserRole.CUSTOMER, "c1@example.com")

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.booking import BookingCreate, BookingRead, BookingDetail, BookingList
 from app.services.booking import booking_service
 
@@ -14,10 +14,10 @@ def confirm_booking(
     *,
     db: Session = Depends(deps.get_db),
     booking_in: BookingCreate,
-    current_user: User = Depends(deps.get_current_user),
+    current_user: User = Depends(deps.RoleChecker([UserRole.CUSTOMER])),
 ) -> Any:
     """
-    Confirm a booking from active holds.
+    Confirm a booking from active holds. Only for CUSTOMER users.
     """
     return booking_service.confirm_booking(
         db=db, show_seat_ids=booking_in.show_seat_ids, user=current_user

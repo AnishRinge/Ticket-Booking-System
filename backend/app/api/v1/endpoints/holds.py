@@ -7,7 +7,7 @@ from app.db.deps import get_db
 from app.schemas.hold import HoldCreate, HoldResponse, ActiveHoldResponse
 from app.schemas.base import ResponseSchema
 from app.services.hold import hold_service
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -15,10 +15,10 @@ router = APIRouter()
 def create_hold(
     hold_in: HoldCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(deps.get_current_user)
+    current_user: User = Depends(deps.RoleChecker([UserRole.CUSTOMER]))
 ):
     """
-    Create a seat hold. Only for authenticated users.
+    Create a seat hold. Only for CUSTOMER users.
     """
     hold = hold_service.create_hold(db, show_seat_id=hold_in.show_seat_id, user=current_user)
     return ResponseSchema(

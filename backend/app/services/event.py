@@ -4,6 +4,8 @@ from fastapi import status
 from datetime import datetime, timezone
 
 from app.models.event import Event
+from app.models.waitlist import WaitlistEntry, WaitlistOffer
+from app.models.inventory import ShowSeat
 from app.repositories.event import event_repository, event_pricing_repository
 from app.repositories.venue import venue_repository, seat_category_repository
 from app.schemas.event import EventCreate, EventUpdate
@@ -230,6 +232,27 @@ class EventService:
             raise AppException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message="Cannot delete event with existing bookings."
+            )
+
+        has_waitlist_entries = (
+            db.query(WaitlistEntry)
+            .filter(WaitlistEntry.event_id == event_id)
+            .first()
+            is not None
+        )
+
+        has_waitlist_offers = (
+            db.query(WaitlistOffer)
+            .join(ShowSeat, WaitlistOffer.show_seat_id == ShowSeat.id)
+            .filter(ShowSeat.event_id == event_id)
+            .first()
+            is not None
+        )
+
+        if has_waitlist_entries or has_waitlist_offers:
+            raise AppException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Cannot delete event with existing waitlist entries."
             )
 
         return event_repository.remove(db, id=event_id)

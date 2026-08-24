@@ -14,6 +14,7 @@ import {
   MapPin,
   Plus,
   Ticket,
+  Trash2,
 } from "lucide-react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import api from "@/lib/api";
@@ -61,6 +62,7 @@ export default function OrganiserEventsPage() {
   const [categoryPrices, setCategoryPrices] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [initializingEventId, setInitializingEventId] = useState<number | null>(null);
+  const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
 
   async function loadData() {
     try {
@@ -235,6 +237,35 @@ export default function OrganiserEventsPage() {
       );
     } finally {
       setInitializingEventId(null);
+    }
+  }
+
+  async function handleDeleteEvent(event: EventResponse) {
+    const confirmed = window.confirm(
+      `Delete "${event.title}"? This cannot be undone. Events with existing bookings or waitlist entries cannot be deleted.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingEventId(event.id);
+      setError("");
+      setSuccess("");
+
+      await api.delete(`/events/${event.id}`);
+
+      setEvents((prev) => prev.filter((item) => item.id !== event.id));
+      setInventoryMap((prev) => {
+        const next = { ...prev };
+        delete next[event.id];
+        return next;
+      });
+      setSuccess(`Event "${event.title}" deleted successfully.`);
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message || "Failed to delete event. Please try again."
+      );
+    } finally {
+      setDeletingEventId(null);
     }
   }
 
@@ -426,6 +457,7 @@ export default function OrganiserEventsPage() {
               const status = new Date(event.start_time) > new Date() ? "Upcoming" : "Completed";
               const invInfo = inventoryMap[event.id];
               const isInitializing = initializingEventId === event.id;
+              const isDeleting = deletingEventId === event.id;
 
               return (
                 <article key={event.id} className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
@@ -474,10 +506,24 @@ export default function OrganiserEventsPage() {
                     )}
                   </div>
 
-                  <div className="pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
                     <Link href={`/events/${event.id}`} className="inline-flex items-center gap-2 text-sm font-medium text-blue-400 hover:text-blue-300">
                       <Ticket size={16} /> View event details & seat map
                     </Link>
+
+                    <button
+                      onClick={() => handleDeleteEvent(event)}
+                      disabled={isDeleting}
+                      title="Events with existing bookings or waitlist entries cannot be deleted."
+                      className="flex items-center gap-1.5 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-950/60 disabled:opacity-50"
+                    >
+                      {isDeleting ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                      Delete Event
+                    </button>
                   </div>
                 </article>
               );
