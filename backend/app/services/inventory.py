@@ -8,6 +8,7 @@ from app.repositories.event import event_repository
 from app.core.exceptions import AppException
 
 from app.models.user import UserRole, User
+from app.services.publisher import seat_update_publisher
 
 class InventoryService:
     def initialize_inventory(self, db: Session, event_id: int, current_user: User) -> List[ShowSeat]:
@@ -52,7 +53,17 @@ class InventoryService:
         # Bulk create commits internally in our repository implementation
         show_seat_repository.bulk_create(db, obj_list=show_seats_to_create)
         
-        return show_seat_repository.get_by_event(db, event_id=event_id)
+        created_inventory = show_seat_repository.get_by_event(db, event_id=event_id)
+        
+        # Integration: Publish status updates for all newly created seats
+        for seat in created_inventory:
+            seat_update_publisher.publish_seat_status_update_sync(
+                event_id=event_id,
+                seat_id=seat.id,
+                new_status=seat.status
+            )
+            
+        return created_inventory
 
     def get_seat_map(self, db: Session, event_id: int) -> List[ShowSeat]:
         # Validate event exists

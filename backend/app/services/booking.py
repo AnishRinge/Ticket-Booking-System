@@ -11,6 +11,7 @@ from app.repositories.booking import booking_repository
 from app.repositories.inventory import show_seat_repository
 from app.repositories.event import event_pricing_repository
 from app.core.exceptions import AppException
+from app.services.publisher import seat_update_publisher
 
 class BookingService:
     def confirm_booking(self, db: Session, show_seat_ids: List[int], user: User) -> Booking:
@@ -123,6 +124,14 @@ class BookingService:
             db.commit()
             db.refresh(booking)
             
+            # Integration: Publish seat status updates
+            for seat, _ in booking_seats_data:
+                seat_update_publisher.publish_seat_status_update_sync(
+                    event_id=seat.event_id,
+                    seat_id=seat.id,
+                    new_status=seat.status
+                )
+            
             # Integration: Trigger fulfillment (QR + Email)
             from app.services.notification import notification_service
             notification_service.send_booking_confirmation_sync(booking.id)
@@ -198,6 +207,15 @@ class BookingService:
         try:
             db.commit()
             db.refresh(booking)
+            
+            # Integration: Publish seat status updates
+            for seat in show_seats:
+                seat_update_publisher.publish_seat_status_update_sync(
+                    event_id=seat.event_id,
+                    seat_id=seat.id,
+                    new_status=seat.status
+                )
+                
             return booking
         except Exception as e:
             db.rollback()

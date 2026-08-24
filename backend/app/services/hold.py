@@ -10,6 +10,7 @@ from app.repositories.inventory import show_seat_repository
 from app.repositories.waitlist import waitlist_offer_repository
 from app.core.exceptions import AppException
 from app.core.config import settings
+from app.services.publisher import seat_update_publisher
 
 class HoldService:
     def create_hold(self, db: Session, show_seat_id: int, user: User) -> ShowSeat:
@@ -62,6 +63,14 @@ class HoldService:
         db.add(show_seat)
         db.commit()
         db.refresh(show_seat)
+        
+        # Integration: Publish seat status update
+        seat_update_publisher.publish_seat_status_update_sync(
+            event_id=show_seat.event_id,
+            seat_id=show_seat.id,
+            new_status=show_seat.status
+        )
+        
         return show_seat
 
     def release_hold(self, db: Session, show_seat_id: int, user: User) -> ShowSeat:
@@ -95,6 +104,14 @@ class HoldService:
         
         db.commit()
         db.refresh(show_seat)
+
+        # Integration: Publish seat status update
+        seat_update_publisher.publish_seat_status_update_sync(
+            event_id=show_seat.event_id,
+            seat_id=show_seat.id,
+            new_status=show_seat.status
+        )
+        
         return show_seat
 
     def get_user_holds(self, db: Session, user_id: int) -> List[ShowSeat]:
@@ -104,11 +121,17 @@ class HoldService:
         expired_seats = show_seat_repository.get_expired_holds(db)
         count = 0
         from app.services.waitlist import waitlist_service
+        
+        # Capture seat info for publishing after commit
+        to_publish = []
+        
         for seat in expired_seats:
             seat.status = SeatStatus.AVAILABLE
             seat.held_by_id = None
             seat.hold_expires_at = None
             db.add(seat)
+            
+            to_publish.append((seat.event_id, seat.id, seat.status))
             
             # Integration: Trigger waitlist allocation for released seat
             waitlist_service.process_waitlist_for_seat(db, show_seat_id=seat.id, commit=False)
@@ -116,6 +139,13 @@ class HoldService:
         
         if count > 0:
             db.commit()
+            # Publish all updates after successful commit
+            for event_id, seat_id, status in to_publish:
+                seat_update_publisher.publish_seat_status_update_sync(
+                    event_id=event_id,
+                    seat_id=seat_id,
+                    new_status=status
+                )
         return count
 
 hold_service = HoldService()
