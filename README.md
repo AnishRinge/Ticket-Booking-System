@@ -536,7 +536,7 @@ Backend API:
 API documentation:
 
 ```text
-<DEPLOYED_BACKEND_URL>/docs
+https://ticketflow-backend-pxlv.onrender.com/docs
 ```
 
 The final hosted URLs should be added before submission.
@@ -558,10 +558,9 @@ Additional project documentation:
 
 The project submission contains:
 
-1. Complete source-code ZIP
-2. README with setup instructions, environment configuration, API documentation, database schema, seat-hold logic, and waitlist logic
-3. Hosted application URL
-4. `SYSTEM_DESIGN.md` covering:
+1. README with setup instructions, environment configuration, API documentation, database schema, seat-hold logic, and waitlist logic
+2. Hosted application URL
+3. `SYSTEM_DESIGN.md` covering:
    - Seat hold and TTL mechanism
    - Concurrency prevention
    - Waitlist auto-assignment
