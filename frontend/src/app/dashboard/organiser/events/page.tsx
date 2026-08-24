@@ -4,9 +4,12 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  AlertTriangle,
   CalendarDays,
   Check,
+  CheckCircle2,
   Clock,
+  Layers,
   Loader2,
   MapPin,
   Plus,
@@ -20,6 +23,8 @@ import type {
   EventCreate,
   EventResponse,
   SeatCategory,
+  SeatMapResponse,
+  ShowSeat,
   Venue,
 } from "@/types";
 
@@ -30,10 +35,16 @@ function formatDate(value: string) {
   });
 }
 
+interface InventoryStatus {
+  initialized: boolean;
+  count: number;
+}
+
 export default function OrganiserEventsPage() {
   const [events, setEvents] = useState<EventResponse[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [categories, setCategories] = useState<SeatCategory[]>([]);
+  const [inventoryMap, setInventoryMap] = useState<Record<number, InventoryStatus>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -49,6 +60,7 @@ export default function OrganiserEventsPage() {
   // Pricing per category map
   const [categoryPrices, setCategoryPrices] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
+  const [initializingEventId, setInitializingEventId] = useState<number | null>(null);
 
   async function loadData() {
     try {
@@ -79,6 +91,26 @@ export default function OrganiserEventsPage() {
         initialPrices[cat.id] = "500";
       });
       setCategoryPrices(initialPrices);
+
+      // Check seat map / inventory status for each organiser event
+      const invStatusMap: Record<number, InventoryStatus> = {};
+      await Promise.all(
+        userEvents.map(async (event) => {
+          try {
+            const seatMapRes = await api.get<ApiResponse<SeatMapResponse>>(
+              `/events/${event.id}/seat-map`
+            );
+            const seats = seatMapRes.data.data.seats || [];
+            invStatusMap[event.id] = {
+              initialized: seats.length > 0,
+              count: seats.length,
+            };
+          } catch {
+            invStatusMap[event.id] = { initialized: false, count: 0 };
+          }
+        })
+      );
+      setInventoryMap(invStatusMap);
 
       setError("");
     } catch {
@@ -154,6 +186,10 @@ export default function OrganiserEventsPage() {
       const newEvent = res.data.data;
 
       setEvents((prev) => [newEvent, ...prev]);
+      setInventoryMap((prev) => ({
+        ...prev,
+        [newEvent.id]: { initialized: false, count: 0 },
+      }));
       setSuccess(`Event "${newEvent.title}" created successfully.`);
 
       setTitle("");
@@ -167,6 +203,38 @@ export default function OrganiserEventsPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleInitializeInventory(eventId: number) {
+    try {
+      setInitializingEventId(eventId);
+      setError("");
+      setSuccess("");
+
+      const res = await api.post<ApiResponse<ShowSeat[]>>(
+        `/events/${eventId}/inventory/initialize`
+      );
+
+      const seats = res.data.data || [];
+      setInventoryMap((prev) => ({
+        ...prev,
+        [eventId]: {
+          initialized: seats.length > 0,
+          count: seats.length,
+        },
+      }));
+
+      setSuccess(
+        `Inventory initialized successfully for event ID ${eventId} (${seats.length} seats created).`
+      );
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+          "Failed to initialize inventory for this event."
+      );
+    } finally {
+      setInitializingEventId(null);
     }
   }
 
@@ -356,8 +424,11 @@ export default function OrganiserEventsPage() {
           <section className="grid gap-4 md:grid-cols-2">
             {events.map((event) => {
               const status = new Date(event.start_time) > new Date() ? "Upcoming" : "Completed";
+              const invInfo = inventoryMap[event.id];
+              const isInitializing = initializingEventId === event.id;
+
               return (
-                <article key={event.id} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+                <article key={event.id} className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <h3 className="truncate text-lg font-semibold text-white">{event.title}</h3>
@@ -368,15 +439,46 @@ export default function OrganiserEventsPage() {
                     </span>
                   </div>
 
-                  <div className="mt-5 space-y-3 text-sm text-slate-300">
+                  <div className="space-y-3 text-sm text-slate-300">
                     <div className="flex items-center gap-3"><CalendarDays size={16} className="text-blue-400" />{formatDate(event.start_time)}</div>
                     {event.end_time && <div className="flex items-center gap-3"><Clock size={16} className="text-blue-400" />Ends {formatDate(event.end_time)}</div>}
                     <div className="flex items-center gap-3"><MapPin size={16} className="text-blue-400" />{event.venue?.name ?? `Venue #${event.venue_id}`}</div>
                   </div>
 
-                  <Link href={`/events/${event.id}`} className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-blue-400 hover:text-blue-300">
-                    <Ticket size={16} /> View event details
-                  </Link>
+                  {/* Inventory Status & Actions */}
+                  <div className="border-t border-slate-800 pt-4">
+                    {invInfo?.initialized ? (
+                      <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-900/40 rounded-lg p-3">
+                        <CheckCircle2 size={16} className="shrink-0" />
+                        <span>Inventory Initialized ({invInfo.count} seats)</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-500/10 border border-amber-900/40 p-3 text-xs text-amber-300">
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <AlertTriangle size={14} className="shrink-0" />
+                          <span>Inventory Not Initialized</span>
+                        </div>
+                        <button
+                          onClick={() => handleInitializeInventory(event.id)}
+                          disabled={isInitializing}
+                          className="flex items-center gap-1.5 rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
+                        >
+                          {isInitializing ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Layers size={14} />
+                          )}
+                          Initialize Inventory
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2">
+                    <Link href={`/events/${event.id}`} className="inline-flex items-center gap-2 text-sm font-medium text-blue-400 hover:text-blue-300">
+                      <Ticket size={16} /> View event details & seat map
+                    </Link>
+                  </div>
                 </article>
               );
             })}
@@ -386,3 +488,4 @@ export default function OrganiserEventsPage() {
     </DashboardShell>
   );
 }
+
