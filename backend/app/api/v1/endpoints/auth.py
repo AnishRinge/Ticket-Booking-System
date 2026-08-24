@@ -6,6 +6,8 @@ from app.schemas.auth import UserCreate, UserResponse, Token, LoginRequest
 from app.services.auth import auth_service
 from app.core.security import create_access_token
 from app.schemas.base import ResponseSchema
+from app.api import deps
+from app.models.user import User
 
 router = APIRouter()
 
@@ -40,4 +42,17 @@ def login(
         message="Login successful.",
         data=Token(access_token=access_token),
         status_code=status.HTTP_200_OK
+    )
+
+@router.get("/me", response_model=ResponseSchema[UserResponse])
+def get_current_user_profile(
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Retrieve the currently authenticated user's profile.
+    """
+    return ResponseSchema(
+        message="Current user retrieved successfully.",
+        data=current_user,
+        status_code=status.HTTP_200_OK,
     )

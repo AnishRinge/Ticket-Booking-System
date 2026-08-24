@@ -34,17 +34,21 @@ The Ticket Booking System uses PostgreSQL as the authoritative source of truth. 
 * **Unique Booking Reference**: Enforced on `bookings`.
 
 ## Migration Instructions
-Since a live PostgreSQL instance was not available during development, migrations must be generated and applied once a database is accessible.
+The project uses PostgreSQL as the authoritative database in development and deployment.
 
-1. Ensure `.env` is configured with correct `POSTGRES_*` values.
-2. Run the following command from the `backend` directory to generate the initial migration:
-   ```bash
-   python -m alembic revision --autogenerate -m "Initial migration"
-   ```
-3. Apply the migration:
-   ```bash
-   python -m alembic upgrade head
-   ```
+The database is run through PostgreSQL 16. Alembic migrations are used to manage schema changes.
+
+From backend/:
+
+python -m alembic upgrade head
+
+To create a new migration after a model change:
+
+python -m alembic revision --autogenerate -m "description"
+
+To verify the current migration:
+
+python -m alembic current
 
 ## Verification
 Model integrity and relationships have been verified using SQLite in-memory tests (`backend/tests/test_database.py`).
