@@ -91,7 +91,11 @@ export interface SeatMapResponse {
   seats: ShowSeat[];
 }
 
-// Events
+export interface EventCategoryPricingCreate {
+  category_id: number;
+  price: number;
+}
+
 export interface EventCategoryPricing {
   id: number;
   category_id: number;
@@ -99,6 +103,15 @@ export interface EventCategoryPricing {
   category?: SeatCategory;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface EventCreate {
+  title: string;
+  description?: string;
+  venue_id: number;
+  start_time: string;
+  end_time?: string;
+  category_pricings: EventCategoryPricingCreate[];
 }
 
 export interface Event {
