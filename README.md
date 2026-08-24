@@ -1,271 +1,59 @@
 # TicketFlow — Event Ticket Booking System
 
-TicketFlow is a full-stack event ticket booking platform designed around concurrency-safe seat inventory, temporary seat holds, transactional bookings, FIFO waitlists, real-time seat updates, QR-code tickets, and role-based dashboards.
+TicketFlow is a full-stack event ticket booking platform built with **Next.js, FastAPI, PostgreSQL, Redis, and ARQ**.
 
-The system supports three roles:
-
-- **Customer** — browse events, select seats, hold and book tickets, manage bookings, and join waitlists.
-- **Organiser** — create/manage events and view booking and revenue analytics.
-- **Admin** — manage venues, physical seat layouts, and users.
+The system supports customer booking, organiser event management, admin management, concurrency-safe seat inventory, temporary seat holds, FIFO waitlists, time-limited waitlist offers, real-time seat updates, QR ticket generation, and asynchronous notifications.
 
 ---
 
 ## Features
 
-### Customer
-
-- User registration and authentication
-- JWT-based login
-- Browse and filter events
-- View event details
-- Visual seat map
-- Seat categories and event-specific pricing
-- Temporary seat holds
-- Automatic expiration of holds
-- Concurrency-safe booking
-- Booking confirmation
-- Booking history
-- Booking details and ticket information
-- Booking cancellation
-- FIFO waitlists
+- JWT authentication with role-based access control
+- Customer, Organiser, and Admin dashboards
+- Event discovery and event management
+- Interactive event seat maps
+- Temporary seat holds with configurable TTL
+- Concurrency-safe booking using PostgreSQL row-level locking
+- Booking cancellation and seat release
+- FIFO waitlist with automatic seat assignment
 - Time-limited waitlist offers
-- QR-code ticket generation
-- Email booking confirmations
-- Real-time seat status updates
-
-### Organiser
-
-- Organiser authentication
-- Organiser dashboard
-- Create and manage events
-- View managed events
-- Event details
-- Booking statistics
-- Revenue statistics
-- Analytics dashboard
-
-### Admin
-
-- Admin authentication
-- System dashboard
-- Venue management
-- Physical seat layout management
-- User management
-- Role-based access control
-
----
-
-# Architecture
-
-```text
-                         ┌─────────────────────┐
-                         │   Next.js Frontend  │
-                         │                     │
-                         │ Customer / Organiser│
-                         │ Admin Dashboards    │
-                         └──────────┬──────────┘
-                                    │
-                              REST / WebSocket
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │   FastAPI Backend   │
-                         │                     │
-                         │ API / RBAC / Logic  │
-                         │ Transactions        │
-                         └───────┬─────┬───────┘
-                                 │     │
-                    ┌────────────┘     └─────────────┐
-                    ▼                                ▼
-          ┌──────────────────┐              ┌──────────────────┐
-          │   PostgreSQL     │              │      Redis       │
-          │                  │              │                  │
-          │ Source of Truth  │              │ Queue / PubSub   │
-          └──────────────────┘              └────────┬─────────┘
-                                                     │
-                                                     ▼
-                                            ┌──────────────────┐
-                                            │    ARQ Worker    │
-                                            │                  │
-                                            │ QR Generation    │
-                                            │ Email Delivery   │
-                                            └────────┬─────────┘
-                                                     │
-                                                     ▼
-                                            ┌──────────────────┐
-                                            │  Email Provider  │
-                                            └──────────────────┘
-
-## Main Components
-
-### Next.js Frontend
-
-Provides the customer, organiser, and admin interfaces.
-
-The frontend contains:
-
-- Public event discovery
-- Event details
-- Interactive seat selection
-- Booking flow
-- Booking history
-- Ticket details
-- Customer dashboard
-- Organiser dashboard
-- Organiser event management
-- Organiser analytics
-- Admin dashboard
-- Venue management
-- Physical seat layout management
-- User management
-
-### FastAPI Backend
-
-Provides:
-
-- REST APIs
-- Authentication
-- JWT token handling
-- Role-based access control
-- Event management
-- Inventory management
-- Seat holds
-- Booking transactions
-- Booking cancellation
-- Waitlist management
-- Dashboard APIs
-- WebSocket endpoints
-
-### PostgreSQL
-
-PostgreSQL is the authoritative source of truth for:
-
-- Users
-- Venues
-- Physical seats
-- Seat categories
-- Events
-- Event pricing
-- Event-specific seat inventory
-- Bookings
-- Booking seats
-- Waitlist entries
-- Waitlist offers
-
-### Redis
-
-Redis provides:
-
-- Background job queue infrastructure
-- Redis Pub/Sub for real-time seat updates
-
-### ARQ Worker
-
-The ARQ worker processes asynchronous jobs including:
-
-- Booking confirmation emails
+- Redis Pub/Sub and WebSocket seat updates
 - QR ticket generation
-- Waitlist offer emails
-
-### Background Scheduler
-
-The background scheduler periodically processes:
-
-- Expired seat holds
-- Expired waitlist offers
-
-### WebSockets
-
-WebSockets provide event-specific real-time seat status updates.
+- Asynchronous booking confirmation emails
+- Admin venue, layout, and user management
+- Organiser event and revenue analytics
 
 ---
 
-# Technology Stack
+## Technology Stack
 
-## Frontend
-
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- Axios
-- Recharts
-- Lucide React
-
-## Backend
-
-- Python
-- FastAPI
-- SQLAlchemy
-- Pydantic
-- PostgreSQL
-- Alembic
-- JWT authentication
-- Argon2 password hashing
-
-## Infrastructure
-
-- PostgreSQL 16
-- Redis 7
-- ARQ
-- Docker
-- Redis Pub/Sub
-- WebSockets
+| Layer | Technologies |
+|---|---|
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Backend | Python, FastAPI, SQLAlchemy, Pydantic |
+| Database | PostgreSQL |
+| Cache / Messaging | Redis |
+| Background Jobs | ARQ |
+| Authentication | JWT + Argon2 |
+| Real-Time | WebSockets + Redis Pub/Sub |
+| Migrations | Alembic |
+| Deployment | Vercel + Backend Hosting Platform |
 
 ---
-
-# Repository Structure
-
-```text
-Ticket-Booking/
-│
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── v1/
-│   │   │       ├── endpoints/
-│   │   │       └── router.py
-│   │   │
-│   │   ├── core/
-│   │   ├── models/
-│   │   ├── repositories/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   ├── worker/
-│   │   └── ws/
-│   │
-│   ├── migrations/
-│   ├── tests/
-│   ├── alembic.ini
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   ├── components/
-│   │   ├── lib/
-│   │   └── types/
-│   ├── package.json
-│   └── next.config.ts
-│
-├── Architecture.md
-├── DATABASE.md
-└── README.md
 
 # Prerequisites
 
-Install:
+Install the following:
 
 - Python 3.11+
 - Node.js
 - npm
 - Docker Desktop
-
-Docker is used to run PostgreSQL and Redis locally.
+- Git
 
 ---
 
-# Local Setup
+# Setup
 
 ## 1. Clone the Repository
 
@@ -276,27 +64,18 @@ cd Ticket-Booking
 
 ---
 
-# Backend Setup
+## 2. Backend Setup
 
-## 2. Create Virtual Environment
-
-From the project root:
+Create and activate a virtual environment:
 
 ### Windows PowerShell
 
 ```powershell
 python -m venv .venv
-```
-
-Activate it:
-
-```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
----
-
-## 3. Install Backend Dependencies
+Install dependencies:
 
 ```powershell
 cd backend
@@ -305,7 +84,7 @@ pip install -r requirements.txt
 
 ---
 
-# PostgreSQL
+## 3. PostgreSQL
 
 Start PostgreSQL using Docker:
 
@@ -318,23 +97,11 @@ docker run --name ticket-booking-postgres `
   -d postgres:16
 ```
 
-Verify:
-
-```powershell
-docker ps
-```
-
-PostgreSQL should be available at:
-
-```text
-localhost:5432
-```
-
 ---
 
-# Redis
+## 4. Redis
 
-Start Redis using Docker:
+Start Redis:
 
 ```powershell
 docker run --name ticket-booking-redis `
@@ -342,25 +109,19 @@ docker run --name ticket-booking-redis `
   -d redis:7
 ```
 
-Verify:
-
-```powershell
-docker ps
-```
-
-Redis should be available at:
-
-```text
-localhost:6379
-```
-
 ---
 
-# Environment Variables
+## 5. Environment Variables
 
-Configure the backend using the project's environment configuration.
+The backend environment template is provided at:
 
-The configuration includes:
+```text
+backend/.env.example
+```
+
+Configure the required PostgreSQL, Redis, authentication, hold, waitlist, worker, and email settings.
+
+Important configuration values include:
 
 ```text
 DATABASE_URL
@@ -380,11 +141,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES
 SEAT_HOLD_TTL_SECONDS
 WAITLIST_OFFER_TTL_SECONDS
 CLEANUP_INTERVAL_SECONDS
-
-SMTP / email provider configuration
 ```
-
-Never commit real credentials, API keys, passwords, or secret keys.
 
 The frontend uses:
 
@@ -398,9 +155,11 @@ For local development:
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 ```
 
+Do not commit real credentials or secrets.
+
 ---
 
-# Database Migrations
+## 6. Database Migration
 
 From the `backend` directory:
 
@@ -408,84 +167,51 @@ From the `backend` directory:
 python -m alembic upgrade head
 ```
 
-Check the current migration:
-
-```powershell
-python -m alembic current
-```
-
-To create a new migration after a model change:
-
-```powershell
-python -m alembic revision --autogenerate -m "description"
-```
-
 ---
 
-# Start FastAPI
-
-From:
-
-```text
-Ticket-Booking/backend
-```
-
-run:
+## 7. Start the Backend
 
 ```powershell
 uvicorn app.main:app --reload --port 8000
 ```
 
-API base URL:
+Backend API:
 
 ```text
 http://localhost:8000/api/v1
 ```
 
-FastAPI documentation:
-
-```text
-http://localhost:8000/docs
-```
-
 ---
 
-# Start ARQ Worker
+## 8. Start the ARQ Worker
 
-The ARQ worker processes:
+The ARQ worker processes background jobs including:
 
-- Booking confirmation emails
+- Booking confirmation
 - QR ticket generation
 - Waitlist offer notifications
 
-The worker configuration is defined in:
+The worker configuration is located at:
 
 ```text
 backend/app/worker/main.py
 ```
 
-Start the ARQ worker using the `WorkerSettings` configuration defined in that file.
+Start the worker using the project's `WorkerSettings` configuration.
 
 ---
 
-# Frontend Setup
+## 9. Frontend Setup
 
-Open another terminal.
-
-From the project root:
+Open another terminal:
 
 ```powershell
 cd frontend
 npm install
-```
-
-Start the development server:
-
-```powershell
 npm run dev
 ```
 
-The frontend runs on:
+Frontend:
 
 ```text
 http://localhost:3000
@@ -493,402 +219,50 @@ http://localhost:3000
 
 ---
 
-# Production Build
+# API Documentation
 
-Build the frontend:
-
-```powershell
-npm run build
-```
-
----
-
-# Authentication and RBAC
-
-TicketFlow uses JWT-based authentication.
-
-Passwords are securely hashed using Argon2.
-
-Supported roles:
+The backend provides interactive FastAPI OpenAPI documentation at:
 
 ```text
-CUSTOMER
-ORGANISER
-ADMIN
+http://localhost:8000/docs
 ```
 
-Access is enforced through FastAPI dependencies and ownership checks.
+Main API groups include:
 
-## Customer
-
-Customers can:
-
-- Browse events
-- View seat maps
-- Hold seats
-- Book seats
-- View their own bookings
-- Cancel their own bookings
-- Join waitlists
-- Complete booking flows
-
-## Organiser
-
-Organisers can:
-
-- Create events
-- Manage owned events
-- View organiser events
-- View booking statistics
-- View revenue analytics
-
-## Admin
-
-Administrators can:
-
-- Manage venues
-- Manage physical layouts
-- View users
-- Access administrative dashboards
+| API | Purpose |
+|---|---|
+| `/auth` | Registration, login, and authentication |
+| `/events` | Event discovery and event management |
+| `/holds` | Seat hold operations |
+| `/bookings` | Booking, history, and cancellation |
+| `/dashboard/organiser` | Organiser statistics and analytics |
+| `/dashboard/admin` | Admin dashboard |
+| `/users` | Admin user management |
+| `/ws/events/{event_id}` | Real-time seat updates |
 
 ---
 
-# Seat Inventory Model
+# Database Schema
 
-The system separates physical seats from event-specific inventory.
+PostgreSQL is the authoritative source of truth for users, events, inventory, bookings, and waitlists.
+
+The main entities are:
 
 ```text
-Venue
-  │
-  └── Physical Seat
-          │
-          ├── Event A → ShowSeat
-          │
-          └── Event B → ShowSeat
+users
+venues
+seat_categories
+seats
+events
+event_category_pricings
+show_seats
+bookings
+booking_seats
+waitlist_entries
+waitlist_offers
 ```
 
-A physical seat belongs permanently to a venue.
-
-A `ShowSeat` represents the state of that physical seat for a particular event.
-
-This allows the same venue and physical seating layout to be reused across multiple events.
-
----
-
-# Seat State Machine
-
-```text
-AVAILABLE
-    │
-    │ Hold
-    ▼
-  HELD
-   │  │
-   │  └─────────────── TTL expiry ────────────┐
-   │                                           │
-   │ Booking                                  ▼
-   ▼                                      AVAILABLE
- BOOKED
-   │
-   │ Cancellation
-   ▼
-AVAILABLE
-```
-
----
-
-# Seat Holds
-
-Seat holds are temporary reservations.
-
-When a customer requests a seat:
-
-```text
-AVAILABLE → HELD
-```
-
-The backend stores:
-
-```text
-held_by_id
-hold_expires_at
-```
-
-The hold TTL is configurable.
-
-The backend is authoritative. Client-side countdowns do not determine whether a hold is valid.
-
-When the TTL expires, the scheduler releases the seat:
-
-```text
-HELD → AVAILABLE
-```
-
-Released inventory can then trigger waitlist processing.
-
----
-
-# Concurrency Protection
-
-TicketFlow uses PostgreSQL row-level locking to prevent race conditions.
-
-Booking and hold operations use:
-
-```sql
-SELECT ...
-FOR UPDATE
-```
-
-The requested seat IDs are sorted before locking.
-
-This ensures that:
-
-- Concurrent transactions cannot both modify the same seat
-- Only one customer can successfully acquire a seat
-- Multi-seat operations acquire locks deterministically
-- Database transactions remain atomic
-
-PostgreSQL is therefore the authoritative source of truth for inventory state.
-
----
-
-# Booking Flow
-
-```text
-Customer
-   │
-   ▼
-Select Seats
-   │
-   ▼
-Create Hold
-   │
-   ▼
-HELD
-   │
-   ▼
-Confirm Booking
-   │
-   ├── Validate ownership
-   ├── Validate TTL
-   ├── Validate pricing
-   ├── Create Booking
-   ├── Create BookingSeat records
-   └── Change ShowSeat → BOOKED
-          │
-          ▼
-   Background Fulfillment
-          │
-          ├── Generate QR
-          └── Send Email
-```
-
----
-
-# Cancellation
-
-A customer can cancel their own confirmed booking.
-
-The cancellation transaction:
-
-1. Locks the booking.
-2. Validates ownership.
-3. Changes booking status to `CANCELLED`.
-4. Locks the associated seats.
-5. Changes seats to `AVAILABLE`.
-6. Processes eligible waitlist customers.
-7. Publishes seat-status updates.
-
----
-
-# Waitlist
-
-Waitlists are scoped to:
-
-```text
-Event + Seat Category
-```
-
-Customers join a FIFO queue.
-
-The queue is ordered by creation time.
-
-When inventory becomes available:
-
-```text
-Seat Released
-      │
-      ▼
-Find First Eligible Waitlist Entry
-      │
-      ▼
-Create Waitlist Offer
-      │
-      ▼
-15-Minute Offer Window
-      │
-      ├── Accept → Booking
-      │
-      └── Expire/Decline → Next Customer
-```
-
-The configured offer TTL is:
-
-```text
-900 seconds = 15 minutes
-```
-
-The scheduler automatically processes expired offers.
-
----
-
-# Real-Time Seat Updates
-
-The initial seat map is retrieved through the REST API.
-
-Seat-state changes are published to Redis Pub/Sub.
-
-Event-specific channels use:
-
-```text
-event_updates_{event_id}
-```
-
-Example payload:
-
-```json
-{
-  "seat_id": 17,
-  "new_status": "HELD"
-}
-```
-
-The WebSocket endpoint provides event-scoped updates to connected clients.
-
-The frontend applies the update directly to the matching `ShowSeat`.
-
-REST and PostgreSQL remain authoritative for inventory state.
-
----
-
-# QR Tickets
-
-After booking confirmation, an asynchronous ARQ job is created.
-
-The worker:
-
-1. Loads the booking.
-2. Builds a ticket payload.
-3. Generates a QR code.
-4. Produces a PNG image.
-5. Creates the booking confirmation email.
-6. Attaches the QR PNG.
-7. Sends the email to the customer.
-
-The QR payload contains booking and seat information needed to identify the ticket.
-
----
-
-# Email Notifications
-
-Booking confirmation emails include:
-
-- Event
-- Date/time
-- Venue
-- Booking reference
-- Seats
-- Total price
-- QR ticket attachment
-
-Waitlist offer emails include:
-
-- Event
-- Venue
-- Seat category
-- Offer expiration time
-
-Email delivery is handled asynchronously through the background worker.
-
-Failed background jobs are retried according to the worker configuration.
-
----
-
-# API Overview
-
-| Domain | Endpoint | Access |
-|---|---|---|
-| Authentication | `POST /auth/register` | Public |
-| Authentication | `POST /auth/login` | Public |
-| Authentication | `GET /auth/me` | Authenticated |
-| Events | `GET /events` | Public |
-| Events | `GET /events/{event_id}` | Public |
-| Events | `POST /events` | Organiser |
-| Events | `PATCH /events/{event_id}` | Organiser |
-| Events | `DELETE /events/{event_id}` | Organiser |
-| Inventory | `GET /events/{event_id}/seat-map` | Public |
-| Inventory | `POST /events/{event_id}/inventory/initialize` | Organiser/Admin |
-| Holds | `POST /holds` | Authenticated |
-| Holds | `DELETE /holds/{show_seat_id}` | Authenticated |
-| Holds | `GET /holds` | Authenticated |
-| Bookings | `POST /bookings` | Authenticated |
-| Bookings | `GET /bookings` | Authenticated |
-| Bookings | `GET /bookings/{booking_id}` | Authenticated |
-| Bookings | `POST /bookings/{booking_id}/cancel` | Authenticated |
-| Waitlist | `POST /events/{event_id}/waitlist` | Customer |
-| Dashboard | `GET /dashboard/organiser` | Organiser |
-| Dashboard | `GET /dashboard/admin` | Admin |
-| Users | `GET /users` | Admin |
-| WebSocket | `/ws/events/{event_id}` | Authenticated |
-
-Complete request and response schemas are available through the FastAPI OpenAPI documentation.
-
----
-
-# Testing
-
-The backend test suite currently reports:
-
-```text
-126 passed
-```
-
-The frontend production build passes successfully using:
-
-```powershell
-npm run build
-```
-
-Validation covers:
-
-- Authentication
-- Registration
-- Login
-- Role-based access control
-- Event APIs
-- Seat inventory
-- Seat holds
-- Booking confirmation
-- Booking cancellation
-- Waitlist functionality
-- Organiser dashboard
-- Organiser event management
-- Organiser analytics
-- Admin dashboard
-- Admin venue management
-- Admin layout management
-- Admin user management
-- TypeScript validation
-- PostgreSQL-backed API verification
-- WebSocket backend handshake verification
-
----
-
-# Database
-
-See `DATABASE.md` for the detailed database design.
-
-The main inventory relationship is:
+The core inventory relationship is:
 
 ```text
 Venue
@@ -904,127 +278,317 @@ Bookings
 BookingSeats
 ```
 
-Waitlist data is represented by:
+The complete database design, relationships, constraints, and migration information are documented in:
 
 ```text
-WaitlistEntry
+DATABASE.md
+```
+
+---
+
+# Seat Hold and TTL Mechanism
+
+When a customer selects a seat, the backend changes its event-specific `ShowSeat` state:
+
+```text
+AVAILABLE → HELD
+```
+
+The hold stores:
+
+```text
+held_by_id
+hold_expires_at
+```
+
+The hold duration is controlled by:
+
+```text
+SEAT_HOLD_TTL_SECONDS
+```
+
+Before confirming a booking, the backend verifies:
+
+1. The seat exists.
+2. The seat is currently `HELD`.
+3. The current user owns the hold.
+4. The hold has not expired.
+5. All requested seats belong to the same event.
+6. Valid pricing exists.
+
+After successful booking:
+
+```text
+HELD → BOOKED
+```
+
+Expired holds are automatically cleaned up by the background scheduler:
+
+```text
+HELD → AVAILABLE
+```
+
+The backend and database determine whether a hold is valid; the frontend countdown is only a user-interface representation.
+
+---
+
+# Concurrency Prevention
+
+TicketFlow uses PostgreSQL row-level locking to prevent double booking.
+
+Booking and seat-hold operations acquire locks using:
+
+```sql
+SELECT ... FOR UPDATE
+```
+
+Requested seat IDs are sorted before locking so multi-seat operations acquire locks in a deterministic order.
+
+The booking transaction locks the requested seats and validates their state, hold ownership, expiration, event consistency, and pricing before creating the booking.
+
+Only after all validations succeed are the booking and `BookingSeat` records created and the seats changed to:
+
+```text
+BOOKED
+```
+
+Because competing transactions cannot simultaneously modify the same locked inventory rows, two customers cannot successfully book the same seat.
+
+---
+
+# Waitlist Logic
+
+Waitlists are maintained for a specific:
+
+```text
+Event + Seat Category
+```
+
+Customers enter the queue in FIFO order.
+
+When a seat becomes available because of a cancellation or expired hold, the waitlist service identifies the first eligible customer and creates an offer.
+
+The flow is:
+
+```text
+Seat Becomes Available
         ↓
-WaitlistOffer
+Find First Eligible Waitlist Entry
+        ↓
+Create Waitlist Offer
+        ↓
+Notify Customer
+        ↓
+Customer Accepts / Offer Expires
+        ↓
+Accept → Booking
+Expire → Continue Waitlist Processing
 ```
+
+This allows released inventory to be automatically offered to waiting customers.
 
 ---
 
-# Architecture Documentation
+# Time-Limited Waitlist Offers
 
-See `Architecture.md` for:
+Each waitlist offer contains an explicit expiration timestamp.
 
-- System architecture
-- Actors and RBAC
-- Domain model
-- Seat state machine
-- Hold architecture
-- Concurrency strategy
-- Waitlist architecture
-- Booking flow
-- Real-time architecture
-- Security architecture
-- Transactional correctness
-- Failure handling
-- Architectural decisions
+The configured offer TTL is:
+
+```text
+WAITLIST_OFFER_TTL_SECONDS
+```
+
+The project's configured value is:
+
+```text
+900 seconds = 15 minutes
+```
+
+The expiration timestamp is stored by the backend.
+
+A background scheduler periodically identifies expired offers and processes them so that inventory can continue through the waitlist.
+
+The frontend timer does not determine offer validity.
 
 ---
 
-# Security
+# Real-Time Seat Updates
 
-Security mechanisms include:
+The initial seat map is retrieved through the REST API.
 
-- Argon2 password hashing
-- JWT authentication
-- Role-based authorization
-- Ownership validation
-- Pydantic request validation
-- PostgreSQL transactions
-- Row-level locking
-- Environment-based secrets
-- Sanitized administrative user responses
+Seat changes are published through Redis Pub/Sub using event-specific channels:
 
-Password hashes are never returned through the user management API.
+```text
+event_updates_{event_id}
+```
+
+Example payload:
+
+```json
+{
+  "seat_id": 17,
+  "new_status": "HELD"
+}
+```
+
+The frontend receives these updates through the event-specific WebSocket endpoint:
+
+```text
+/ws/events/{event_id}
+```
+
+The matching seat is updated in the client seat map.
+
+PostgreSQL remains the authoritative inventory source.
 
 ---
 
-# Development Commands
+# Authentication and Roles
 
-## Backend Tests
+TicketFlow uses JWT authentication and Argon2 password hashing.
 
-```powershell
-cd backend
-python -m pytest tests -q
+Supported roles:
+
+### CUSTOMER
+
+- Browse events
+- View seat maps
+- Hold seats
+- Book seats
+- View bookings
+- Cancel bookings
+- Join waitlists
+
+### ORGANISER
+
+- Create and manage events
+- View owned events
+- View booking statistics
+- View revenue analytics
+- Initialize event inventory
+
+### ADMIN
+
+- Manage venues
+- Manage physical seat layouts
+- View users
+- Access administrative dashboards
+
+Role-based authorization and ownership checks are enforced by the backend.
+
+---
+
+# Testing
+
+Backend test suite:
+
+```text
+126 passed
 ```
 
-## Backend Server
+Frontend production build:
 
 ```powershell
-cd backend
-uvicorn app.main:app --reload --port 8000
-```
-
-## Frontend Development
-
-```powershell
-cd frontend
-npm run dev
-```
-
-## Frontend Production Build
-
-```powershell
-cd frontend
 npm run build
 ```
 
-## Database Migrations
+Validation covers:
 
-```powershell
-cd backend
-python -m alembic upgrade head
+- Authentication
+- Registration and login
+- Role-based access control
+- Event APIs
+- Seat inventory
+- Seat holds
+- Booking confirmation
+- Booking cancellation
+- Waitlists
+- Organiser dashboard
+- Organiser events
+- Organiser analytics
+- Admin dashboard
+- Admin venues
+- Admin layouts
+- Admin users
+- PostgreSQL-backed API validation
+- TypeScript validation
+- WebSocket backend validation
+
+---
+
+# Deployment
+
+## Hosted Application
+
+Frontend:
+
+```text
+<DEPLOYED_FRONTEND_URL>
 ```
 
----
+Backend API:
 
-# Project Evaluation Highlights
+```text
+<DEPLOYED_BACKEND_URL>
+```
 
-TicketFlow focuses on the core engineering challenges of an event ticket booking system.
+API documentation:
 
-### Inventory Correctness
+```text
+<DEPLOYED_BACKEND_URL>/docs
+```
 
-PostgreSQL is the authoritative source of truth for seat inventory.
-
-### Concurrency
-
-Row-level database locking prevents double booking.
-
-### Temporary Reservations
-
-Seat holds have configurable TTLs and automatic release.
-
-### Waitlist Automation
-
-Released inventory can trigger FIFO waitlist offers with a 15-minute acceptance window.
-
-### Real-Time Experience
-
-Seat state changes are distributed through Redis Pub/Sub and WebSockets.
-
-### Reliable Fulfillment
-
-QR generation and email delivery are handled through asynchronous background jobs.
-
-### Role Isolation
-
-Customer, organiser, and admin functionality is protected through RBAC and ownership checks.
+The final hosted URLs should be added before submission.
 
 ---
 
-# License
+# Project Documentation
 
-This project was developed as a full-stack event ticket booking system implementation project.
+Additional project documentation:
+
+- `Architecture.md` — system architecture and design decisions
+- `DATABASE.md` — database schema and relationships
+- `SYSTEM_DESIGN.md` — evaluator-focused system design
+- `backend/.env.example` — environment configuration template
+
+---
+
+# Submission Deliverables
+
+The project submission contains:
+
+1. Complete source-code ZIP
+2. README with setup instructions, environment configuration, API documentation, database schema, seat-hold logic, and waitlist logic
+3. Hosted application URL
+4. `SYSTEM_DESIGN.md` covering:
+   - Seat hold and TTL mechanism
+   - Concurrency prevention
+   - Waitlist auto-assignment
+   - Time-limited offer handling
+
+---
+
+# Project Structure
+
+```text
+Ticket-Booking/
+│
+├── backend/
+│   ├── app/
+│   ├── migrations/
+│   ├── tests/
+│   ├── alembic.ini
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── next.config.ts
+│
+├── Architecture.md
+├── DATABASE.md
+├── SYSTEM_DESIGN.md
+└── README.md
+```
