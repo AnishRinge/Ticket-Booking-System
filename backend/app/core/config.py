@@ -1,4 +1,5 @@
-from typing import List
+import json
+from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,16 +24,45 @@ class Settings(BaseSettings):
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    BACKEND_CORS_ORIGINS: List[Union[AnyHttpUrl, str]] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+        "https://ticketflow-rust-kappa.vercel.app",
+    ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: str | List[str]) -> List[str] | str:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+    def assemble_cors_origins(cls, v: Union[str, List[str], None]) -> List[str]:
+        default_origins = [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:8000",
+            "https://ticketflow-rust-kappa.vercel.app",
+        ]
+        origins: List[str] = []
+        if isinstance(v, str):
+            v_str = v.strip()
+            if v_str.startswith("[") and v_str.endswith("]"):
+                try:
+                    parsed = json.loads(v_str)
+                    if isinstance(parsed, list):
+                        origins = [str(item).strip().rstrip("/") for item in parsed if item]
+                except Exception:
+                    origins = [i.strip().rstrip("/") for i in v_str.split(",") if i.strip()]
+            else:
+                origins = [i.strip().rstrip("/") for i in v_str.split(",") if i.strip()]
+        elif isinstance(v, list):
+            origins = [str(item).strip().rstrip("/") for item in v if item]
+        
+        combined = list(dict.fromkeys(origins + default_origins))
+        return combined
 
     # Security
     SECRET_KEY: str = "your-super-secret-key-that-is-at-least-32-characters-long"  # Should be overridden in .env

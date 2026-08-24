@@ -41,6 +41,32 @@ The system supports customer booking, organiser event management, admin manageme
 
 ---
 
+# Deployment
+
+## Hosted Application
+
+Frontend:
+
+```text
+<DEPLOYED_FRONTEND_URL>
+```
+
+Backend API:
+
+```text
+<DEPLOYED_BACKEND_URL>
+```
+
+API documentation:
+
+```text
+https://ticketflow-backend-pxlv.onrender.com/docs
+```
+
+The final hosted URLs should be added before submission.
+
+---
+
 # Prerequisites
 
 Install the following:
@@ -58,7 +84,7 @@ Install the following:
 ## 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/AnishRinge/Ticket-Booking-System
 cd Ticket-Booking
 ```
 
@@ -154,8 +180,6 @@ For local development:
 ```text
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 ```
-
-Do not commit real credentials or secrets.
 
 ---
 
@@ -517,31 +541,7 @@ Validation covers:
 
 ---
 
-# Deployment
 
-## Hosted Application
-
-Frontend:
-
-```text
-<DEPLOYED_FRONTEND_URL>
-```
-
-Backend API:
-
-```text
-<DEPLOYED_BACKEND_URL>
-```
-
-API documentation:
-
-```text
-https://ticketflow-backend-pxlv.onrender.com/docs
-```
-
-The final hosted URLs should be added before submission.
-
----
 
 # Project Documentation
 
