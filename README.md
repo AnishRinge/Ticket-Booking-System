@@ -48,13 +48,13 @@ The system supports customer booking, organiser event management, admin manageme
 Frontend:
 
 ```text
-<DEPLOYED_FRONTEND_URL>
+https://ticketflow-rust-kappa.vercel.app
 ```
 
 Backend API:
 
 ```text
-<DEPLOYED_BACKEND_URL>
+https://ticketflow-backend-pxlv.onrender.com/
 ```
 
 API documentation:
@@ -62,8 +62,6 @@ API documentation:
 ```text
 https://ticketflow-backend-pxlv.onrender.com/docs
 ```
-
-The final hosted URLs should be added before submission.
 
 ---
 
